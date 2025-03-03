@@ -1,0 +1,82 @@
+import time
+
+import cv2
+
+
+def overlay_image(background, overlay, position):
+    # Получаем размеры наложенного изображения
+    h, w = overlay.shape[:2]
+
+    # Определяем область наложения в фоновом изображении
+    x, y = position
+    y1, y2 = y, y + h
+    x1, x2 = x, x + w
+
+    # Проверяем границы
+    if y1 < 0 or x1 < 0 or y2 > background.shape[0] or x2 > background.shape[1]:
+        return background  # Если наложение выходит за границы, возвращаем фон без изменений
+
+    # Накладываем изображение
+    alpha_overlay = overlay[:, :, 3] / 255.0  # Альфа-канал
+    alpha_background = 1.0 - alpha_overlay
+
+    for c in range(0, 3):
+        background[y1:y2, x1:x2, c] = (alpha_overlay * overlay[:, :, c] +
+                                       alpha_background * background[y1:y2, x1:x2, c])
+
+    return background
+
+
+def video_processing():
+    cap = cv2.VideoCapture(0)
+    down_points = (640, 480)
+    # Загрузка изображения мухи с альфа-каналом
+    fly_image = cv2.imread('fly64.png', cv2.IMREAD_UNCHANGED)
+    i = 0
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frame = cv2.resize(frame, down_points, interpolation=cv2.INTER_LINEAR)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        ret, thresh = cv2.threshold(gray, 80, 255, cv2.THRESH_BINARY_INV)
+
+        contours, hierarchy = cv2.findContours(thresh,
+                            cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if len(contours) > 0:
+            c = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(c)
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            if i % 5 == 0:
+                a = x + (w // 2)
+                b = y + (h // 2)
+                print(a, b)
+
+                # Отображение координат в левом верхнем углу
+                coordinates_text = f"Coords: ({a}, {b})"
+                cv2.putText(frame, coordinates_text, (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                            (255, 0, 0), 2, cv2.LINE_AA)
+                # Наложение изображения мухи на кадр
+                fly_resized = cv2.resize(fly_image, (50, 50))  # Измените размер по необходимости
+                frame = overlay_image(frame, fly_resized,
+                                      (a - fly_resized.shape[1] // 2, b - fly_resized.shape[0] // 2))
+
+        cv2.imshow('frame', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+        time.sleep(0.1)
+        i += 1
+
+    cap.release()
+
+
+if __name__ == '__main__':
+    #image_processing()
+    video_processing()
+
+cv2.waitKey(0)
+cv2.destroyAllWindows()
